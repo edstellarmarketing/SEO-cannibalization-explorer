@@ -57,7 +57,7 @@ def fetch_page(path: str) -> dict:
     meta = md.get("content", "").strip() if md else ""
     headings = [f"{h.name.upper()}: {h.get_text(' ', strip=True)}" for h in soup.find_all(["h1", "h2", "h3"])]
     body = " ".join(soup.get_text(" ", strip=True).split())
-    return {"url": url, "title": title, "meta": meta, "headings": headings[:40], "body": body[:6000]}
+    return {"url": url, "title": title, "meta": meta, "headings": headings[:50], "body": body[:9000]}
 
 
 def _page_block(label: str, p: dict) -> str:
@@ -74,7 +74,9 @@ def _page_block(label: str, p: dict) -> str:
 
 def build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb) -> str:
     return (
-        "You are an SEO expert resolving keyword cannibalization on edstellar.com.\n\n"
+        "You are a senior SEO editor resolving keyword cannibalization on edstellar.com.\n"
+        "Produce a DETAILED, copy-paste-ready fix with the ACTUAL FINAL CONTENT — not advice. "
+        "Where you say to change something, write the exact replacement text.\n\n"
         f'Two pages both rank for the query: "{query}".\n'
         f"- Page A: {ca['url']} (avg position {pos_a})\n"
         f"- Page B: {cb['url']} (avg position {pos_b})\n\n"
@@ -82,13 +84,28 @@ def build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb) -> str:
         + _page_block("PAGE A", ca)
         + "\n"
         + _page_block("PAGE B", cb)
-        + "\n\nGive a concrete fix. In markdown, under 400 words:\n"
-        f'1. **Winner**: which page should own "{query}" and why (1 line).\n'
-        "2. **Edit the other page**: name the EXACT overlapping headings/sections to remove, "
-        "rewrite, or re-target (quote the actual heading text you see above) and say what intent it should target instead.\n"
-        "3. **Strengthen the winner**: what section/heading/content to add or expand.\n"
-        "4. **Technical**: canonical, internal-link anchor, or 301 recommendation.\n"
-        "Reference the real headings/text above — do not be generic."
+        + "\n\nRespond in markdown with these sections:\n\n"
+        f'## 1. Winner\nWhich URL should own "{query}", and one line why.\n\n'
+        "## 2. Rewrite the losing page\n"
+        "For the page that should NOT own the query, give the FINAL replacement content as "
+        "**Before → After** pairs (quote the real current text from above):\n"
+        "- **Title tag** — Before / After (After ≤ 60 chars, keeps its own distinct intent)\n"
+        "- **Meta description** — Before / After (After ≤ 155 chars)\n"
+        "- **H1** — Before / After\n"
+        "- **Each overlapping heading/section** — quote the current heading, then give the "
+        "rewritten heading AND the full rewritten opening paragraph (final wording, ready to paste) "
+        "that re-targets it to a different search intent.\n\n"
+        "## 3. Strengthen the winning page\n"
+        "Give the FINAL new content to add: exact new H2/H3 heading text plus the complete "
+        "paragraph(s) or FAQ question-and-answer text under each, ready to paste.\n\n"
+        "## 4. Technical fixes\n"
+        "- Exact `<link rel=\"canonical\">` line for each page\n"
+        "- Internal links: exact anchor text + target URL, in BOTH directions\n"
+        "- 301 redirect? yes/no, and the exact rule if yes\n\n"
+        "Rules: WRITE the final titles, metas, headings, and paragraphs verbatim — do not describe "
+        "what to write. Reference the real headings/text shown above. Be thorough and specific. "
+        "Output ONLY the markdown report starting at '## 1. Winner' — no preamble, no sign-off, "
+        "no meta-commentary about your process."
     )
 
 
@@ -105,12 +122,12 @@ def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
             [exe, "-p", prompt],
             capture_output=True,
             text=True,
-            timeout=240,
+            timeout=360,
             stdin=subprocess.DEVNULL,  # don't wait for stdin
             env=os.environ.copy(),  # carries CLAUDE_CODE_OAUTH_TOKEN from .env
         )
     except subprocess.TimeoutExpired:
-        return {"error": "Claude timed out after 240s."}
+        return {"error": "Claude timed out after 360s."}
     if res.returncode != 0:
         return {"error": (res.stderr or "claude exited non-zero").strip()}
     return {"advice": res.stdout.strip()}
@@ -227,7 +244,7 @@ if "action_row" in st.session_state:
             del st.session_state["action_row"]
             st.rerun()
         st.caption(f"{ar['page_a']}  (pos {ar['pos_a']})   ↔   {ar['page_b']}  (pos {ar['pos_b']})")
-        with st.spinner("Fetching both pages and asking Claude… (can take 30–60s)"):
+        with st.spinner("Fetching both pages and asking Claude for the full rewrite… (can take 1–3 min)"):
             result = get_optimization_advice(
                 ar["query"], ar["page_a"], ar["pos_a"], ar["page_b"], ar["pos_b"]
             )
