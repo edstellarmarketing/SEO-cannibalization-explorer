@@ -34,15 +34,34 @@ def claude_auth_status():
                   "already has. Run `claude setup-token` and add it to .env for a stable subscription auth.")
 
 
+import os as _os
+
+# Time-range snapshots: label -> csv file (only those present are offered)
+RANGE_FILES = {
+    "Last 90 days": "cannibalization_data_90.csv",
+    "Last 28 days": "cannibalization_data_28.csv",
+    "Last 7 days": "cannibalization_data_7.csv",
+}
+
+
 @st.cache_data
-def load_data():
-    df = pd.read_csv("cannibalization_data.csv")
-    return df
+def load_data(csv_file: str):
+    return pd.read_csv(csv_file)
+
+
+def available_ranges():
+    avail = {k: v for k, v in RANGE_FILES.items() if _os.path.exists(v)}
+    if not avail and _os.path.exists("cannibalization_data.csv"):
+        avail = {"All data": "cannibalization_data.csv"}
+    return avail
 
 
 @st.cache_data(show_spinner=False)
-def fetch_page(path: str) -> dict:
-    """Fetch a page and extract title, meta description, headings, and body text."""
+def fetch_page(path: str, nonce: int = 0) -> dict:
+    """Fetch a page and extract title, meta description, headings, and body text.
+
+    `nonce` is part of the cache key only — bump it to force a fresh fetch.
+    """
     url = BASE_URL.rstrip("/") + "/" + path.lstrip("/")
     try:
         resp = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (cannibalization-explorer)"})
@@ -127,12 +146,15 @@ def build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
-    """Fetch both pages and ask the Claude headless CLI what to optimize."""
+def get_optimization_advice(query, page_a, pos_a, page_b, pos_b, nonce: int = 0) -> dict:
+    """Fetch both pages and ask the Claude headless CLI what to optimize.
+
+    `nonce` busts the cache so the Re-fetch button forces a fresh run.
+    """
     exe = shutil.which("claude")
     if not exe:
         return {"error": "Run this app on your local machine to use the Fix button."}
-    ca, cb = fetch_page(page_a), fetch_page(page_b)
+    ca, cb = fetch_page(page_a, nonce), fetch_page(page_b, nonce)
     prompt = build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb)
     try:
         res = subprocess.run(
@@ -150,14 +172,18 @@ def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
     return {"advice": res.stdout.strip()}
 
 
-df = load_data()
-
 st.title("🔎 SEO Cannibalization Explorer")
 st.caption(
     "Queries where **exactly two pages** compete. Use the slider to keep only "
     "conflicts where the two pages rank close together — a small position gap "
     "means they are genuinely fighting each other."
 )
+
+# ---- Time range -------------------------------------------------------------
+st.sidebar.header("Time range")
+_ranges = available_ranges()
+range_label = st.sidebar.selectbox("Data window", list(_ranges.keys()), index=0)
+df = load_data(_ranges[range_label])
 
 # ---- Claude auth status -----------------------------------------------------
 _ok, _msg = claude_auth_status()
@@ -271,21 +297,29 @@ st.markdown(
 # ---- Claude optimization advice (shown at top, above the table) -------------
 if "action_row" in st.session_state:
     ar = st.session_state["action_row"]
+    sig = f"{ar['query']}|{ar['page_a']}|{ar['page_b']}"
+    nonce_key = f"nonce_{sig}"
+    nonce = st.session_state.get(nonce_key, 0)
     with st.container(border=True):
-        cols_hdr = st.columns([6, 1])
+        cols_hdr = st.columns([5, 1, 1])
         cols_hdr[0].subheader(f"🔧 How to fix: “{ar['query']}”")
-        if cols_hdr[1].button("✕ Close"):
+        if cols_hdr[1].button("🔄 Re-fetch", help="Fetch both pages fresh and re-run Claude (bypass cache)"):
+            st.session_state[nonce_key] = nonce + 1
+            st.rerun()
+        if cols_hdr[2].button("✕ Close"):
             del st.session_state["action_row"]
             st.rerun()
         st.caption(f"{ar['page_a']}  (pos {ar['pos_a']})   ↔   {ar['page_b']}  (pos {ar['pos_b']})")
         with st.spinner("Fetching both pages and asking Claude for the full rewrite… (can take 1–3 min)"):
             result = get_optimization_advice(
-                ar["query"], ar["page_a"], ar["pos_a"], ar["page_b"], ar["pos_b"]
+                ar["query"], ar["page_a"], ar["pos_a"], ar["page_b"], ar["pos_b"], nonce
             )
         if result.get("error"):
             st.error(result["error"])
         else:
             st.markdown(result["advice"])
+            if nonce:
+                st.caption(f"🔄 Fetched fresh (re-fetch #{nonce}).")
     st.divider()
 
 # ---- Table (custom, with an Action button column) ---------------------------
