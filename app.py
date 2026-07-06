@@ -115,23 +115,49 @@ st.markdown(
     + (f" and **≥ {min_impr:,}** impressions." if min_impr else ".")
 )
 
-# ---- Table ------------------------------------------------------------------
-st.dataframe(
-    f,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "query": "Query",
-        "total_impressions": st.column_config.NumberColumn("Impressions", format="%d"),
-        "pos_gap": st.column_config.NumberColumn("Pos gap", format="%.1f"),
-        "page_a": "Page A",
-        "pos_a": st.column_config.NumberColumn("Pos A", format="%.1f"),
-        "impr_a": st.column_config.NumberColumn("Impr A", format="%d"),
-        "page_b": "Page B",
-        "pos_b": st.column_config.NumberColumn("Pos B", format="%.1f"),
-        "impr_b": st.column_config.NumberColumn("Impr B", format="%d"),
-    },
+# ---- Table (custom, with an Action button column) ---------------------------
+# Cap how many rows render buttons (one st.button per row is expensive).
+row_limit = st.number_input(
+    "Rows to display", min_value=10, max_value=500, value=50, step=10
 )
+view = f.head(int(row_limit))
+
+# column layout: query, impr, gap, page_a, posA, imprA, page_b, posB, imprB, action
+WIDTHS = [3, 1.1, 0.9, 3, 0.8, 1, 3, 0.8, 1, 1.2]
+HEADERS = [
+    "Query", "Impr", "Gap", "Page A", "Pos A", "Impr A",
+    "Page B", "Pos B", "Impr B", "Action",
+]
+
+head_cols = st.columns(WIDTHS)
+for col, label in zip(head_cols, HEADERS):
+    col.markdown(f"**{label}**")
+
+for idx, r in view.iterrows():
+    cols = st.columns(WIDTHS)
+    cols[0].write(r["query"])
+    cols[1].write(f"{int(r['total_impressions']):,}")
+    cols[2].write(f"{r['pos_gap']:.1f}")
+    cols[3].write(r["page_a"])
+    cols[4].write(f"{r['pos_a']:.1f}")
+    cols[5].write(f"{int(r['impr_a']):,}")
+    cols[6].write(r["page_b"])
+    cols[7].write(f"{r['pos_b']:.1f}")
+    cols[8].write(f"{int(r['impr_b']):,}")
+    if cols[9].button("Action", key=f"action_{idx}"):
+        st.session_state["action_row"] = r.to_dict()
+
+if len(f) > len(view):
+    st.caption(f"Showing first {len(view)} of {len(f):,} rows. Increase 'Rows to display' to see more.")
+
+# ---- Placeholder for the (to-be-defined) action ----------------------------
+if "action_row" in st.session_state:
+    ar = st.session_state["action_row"]
+    st.info(
+        f"🔧 Action clicked for query **'{ar['query']}'**  "
+        f"({ar['page_a']}  ↔  {ar['page_b']}).  "
+        "Behaviour to be defined."
+    )
 
 # ---- Download filtered view -------------------------------------------------
 st.download_button(
