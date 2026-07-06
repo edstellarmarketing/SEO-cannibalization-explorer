@@ -106,6 +106,7 @@ def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
             capture_output=True,
             text=True,
             timeout=240,
+            stdin=subprocess.DEVNULL,  # don't wait for stdin
             env=os.environ.copy(),  # carries CLAUDE_CODE_OAUTH_TOKEN from .env
         )
     except subprocess.TimeoutExpired:
@@ -216,6 +217,26 @@ st.markdown(
     + (f" and **≥ {min_impr:,}** impressions." if min_impr else ".")
 )
 
+# ---- Claude optimization advice (shown at top, above the table) -------------
+if "action_row" in st.session_state:
+    ar = st.session_state["action_row"]
+    with st.container(border=True):
+        cols_hdr = st.columns([6, 1])
+        cols_hdr[0].subheader(f"🔧 How to fix: “{ar['query']}”")
+        if cols_hdr[1].button("✕ Close"):
+            del st.session_state["action_row"]
+            st.rerun()
+        st.caption(f"{ar['page_a']}  (pos {ar['pos_a']})   ↔   {ar['page_b']}  (pos {ar['pos_b']})")
+        with st.spinner("Fetching both pages and asking Claude… (can take 30–60s)"):
+            result = get_optimization_advice(
+                ar["query"], ar["page_a"], ar["pos_a"], ar["page_b"], ar["pos_b"]
+            )
+        if result.get("error"):
+            st.error(result["error"])
+        else:
+            st.markdown(result["advice"])
+    st.divider()
+
 # ---- Table (custom, with an Action button column) ---------------------------
 # Cap how many rows render buttons (one st.button per row is expensive).
 row_limit = st.number_input(
@@ -247,27 +268,10 @@ for idx, r in view.iterrows():
     cols[8].write(f"{int(r['impr_b']):,}")
     if cols[9].button("🔧 Fix", key=f"action_{idx}", help="Ask Claude what to optimize"):
         st.session_state["action_row"] = r.to_dict()
+        st.rerun()  # jump straight to the result panel at the top
 
 if len(f) > len(view):
     st.caption(f"Showing first {len(view)} of {len(f):,} rows. Increase 'Rows to display' to see more.")
-
-# ---- Claude optimization advice --------------------------------------------
-if "action_row" in st.session_state:
-    ar = st.session_state["action_row"]
-    st.divider()
-    st.subheader(f"🔧 How to fix: “{ar['query']}”")
-    st.caption(f"{ar['page_a']}  (pos {ar['pos_a']})   ↔   {ar['page_b']}  (pos {ar['pos_b']})")
-    with st.spinner("Fetching both pages and asking Claude…"):
-        result = get_optimization_advice(
-            ar["query"], ar["page_a"], ar["pos_a"], ar["page_b"], ar["pos_b"]
-        )
-    if result.get("error"):
-        st.error(result["error"])
-    else:
-        st.markdown(result["advice"])
-    if st.button("Clear result"):
-        del st.session_state["action_row"]
-        st.rerun()
 
 # ---- Download filtered view -------------------------------------------------
 st.download_button(
