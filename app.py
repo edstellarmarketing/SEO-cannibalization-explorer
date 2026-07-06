@@ -301,12 +301,13 @@ if skip_corp:
     f = f[~_touches(f, "corporate-training-companies")]
 
 # Collapse reverse/duplicate queries that point to the same unordered page pair,
-# keeping the highest-impression query as the representative row.
+# keeping the highest-CLICK query (then highest-impression) as the representative row
+# so click-bearing variants are never masked by a 0-click sibling.
 if one_per_pair and not f.empty:
     pair_key = f.apply(lambda r: tuple(sorted((r["page_a"], r["page_b"]))), axis=1)
     f = (
         f.assign(_pair=pair_key)
-        .sort_values("total_impressions", ascending=False)
+        .sort_values(["total_clicks", "total_impressions"], ascending=False)
         .drop_duplicates("_pair", keep="first")
         .drop(columns="_pair")
     )
