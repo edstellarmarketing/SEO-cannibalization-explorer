@@ -225,6 +225,14 @@ min_clicks = st.sidebar.slider(
     + (" (No conflict in this window has any clicks.)" if _max_clicks == 0 else ""),
 )
 
+posa_choice = st.sidebar.selectbox(
+    "Page A rank",
+    ["Any position", "Pos A ≤ 10 (page 1)", "Pos A ≤ 20 (page 1–2)"],
+    index=0,
+    help="Keep only conflicts where the better-ranking page (Page A) is already in the top 10 or 20.",
+)
+POSA_MAX = {"Any position": None, "Pos A ≤ 10 (page 1)": 10, "Pos A ≤ 20 (page 1–2)": 20}[posa_choice]
+
 query_search = st.sidebar.text_input("Search query text", "")
 page_search = st.sidebar.text_input("Search page URL", "")
 
@@ -257,6 +265,9 @@ f = df[
     & (df["total_impressions"] >= min_impr)
     & (df["total_clicks"] >= min_clicks)
 ]
+
+if POSA_MAX is not None:
+    f = f[f["pos_a"] <= POSA_MAX]
 
 if query_search.strip():
     f = f[f["query"].str.contains(query_search.strip(), case=False, na=False)]
