@@ -52,6 +52,12 @@ min_impr = st.sidebar.slider(
 query_search = st.sidebar.text_input("Search query text", "")
 page_search = st.sidebar.text_input("Search page URL", "")
 
+st.sidebar.header("Exclude")
+skip_1word = st.sidebar.checkbox("Skip 1-word queries", value=False)
+skip_2word = st.sidebar.checkbox("Skip 2-word queries", value=False)
+skip_skills = st.sidebar.checkbox("Skip skills-in-demand cluster", value=False)
+skip_corp = st.sidebar.checkbox("Skip corporate-training-companies cluster", value=False)
+
 st.sidebar.header("Sort")
 SORT_OPTIONS = {
     "Pos A (low → high)": ("pos_a", True),
@@ -74,6 +80,27 @@ if page_search.strip():
         f["page_a"].str.contains(s, case=False, na=False)
         | f["page_b"].str.contains(s, case=False, na=False)
     ]
+
+# Word-count exclusions
+word_count = f["query"].str.split().str.len()
+if skip_1word:
+    f = f[word_count != 1]
+    word_count = f["query"].str.split().str.len()
+if skip_2word:
+    f = f[word_count != 2]
+
+
+def _touches(frame, needle):
+    return frame["page_a"].str.contains(needle, na=False) | frame[
+        "page_b"
+    ].str.contains(needle, na=False)
+
+
+# Cluster exclusions (drop the conflict if either competing page is in the cluster)
+if skip_skills:
+    f = f[~_touches(f, "skills-in-demand")]
+if skip_corp:
+    f = f[~_touches(f, "corporate-training-companies")]
 
 f = f.sort_values(sort_col, ascending=sort_asc)
 
