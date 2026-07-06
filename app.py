@@ -27,7 +27,7 @@ BASE_URL = "https://www.edstellar.com"
 def claude_auth_status():
     """Return (ok: bool, message: str) describing headless-CLI readiness."""
     if not shutil.which("claude"):
-        return False, "`claude` CLI not found on this host — install Claude Code and run this app there."
+        return False, "Run this app on your local machine to use the Fix button."
     if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
         return True, "Authenticated via subscription token (CLAUDE_CODE_OAUTH_TOKEN)."
     return True, ("No CLAUDE_CODE_OAUTH_TOKEN in .env — will use whatever login `claude` "
@@ -97,9 +97,7 @@ def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
     """Fetch both pages and ask the Claude headless CLI what to optimize."""
     exe = shutil.which("claude")
     if not exe:
-        return {"error": "The `claude` CLI is not available on this host. "
-                         "This feature runs where Claude Code is installed and authenticated "
-                         "(e.g. your local machine). Streamlit Cloud does not have it."}
+        return {"error": "Run this app on your local machine to use the Fix button."}
     ca, cb = fetch_page(page_a), fetch_page(page_b)
     prompt = build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb)
     try:
