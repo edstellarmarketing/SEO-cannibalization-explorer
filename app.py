@@ -193,6 +193,12 @@ skip_1word = st.sidebar.checkbox("Skip 1-word queries", value=False)
 skip_2word = st.sidebar.checkbox("Skip 2-word queries", value=False)
 skip_skills = st.sidebar.checkbox("Skip skills-in-demand cluster", value=False)
 skip_corp = st.sidebar.checkbox("Skip corporate-training-companies cluster", value=False)
+one_per_pair = st.sidebar.checkbox(
+    "One row per page pair",
+    value=True,
+    help="Collapse reverse/duplicate queries (e.g. 'ceo vs coo' and 'coo vs ceo') that point to "
+         "the same two pages. Keeps the highest-impression query as the representative.",
+)
 
 st.sidebar.header("Sort")
 SORT_OPTIONS = {
@@ -237,6 +243,17 @@ if skip_skills:
     f = f[~_touches(f, "skills-in-demand")]
 if skip_corp:
     f = f[~_touches(f, "corporate-training-companies")]
+
+# Collapse reverse/duplicate queries that point to the same unordered page pair,
+# keeping the highest-impression query as the representative row.
+if one_per_pair and not f.empty:
+    pair_key = f.apply(lambda r: tuple(sorted((r["page_a"], r["page_b"]))), axis=1)
+    f = (
+        f.assign(_pair=pair_key)
+        .sort_values("total_impressions", ascending=False)
+        .drop_duplicates("_pair", keep="first")
+        .drop(columns="_pair")
+    )
 
 f = f.sort_values(sort_col, ascending=sort_asc)
 
