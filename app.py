@@ -52,6 +52,16 @@ min_impr = st.sidebar.slider(
 query_search = st.sidebar.text_input("Search query text", "")
 page_search = st.sidebar.text_input("Search page URL", "")
 
+st.sidebar.header("Sort")
+SORT_OPTIONS = {
+    "Pos A (low → high)": ("pos_a", True),
+    "Pos B (low → high)": ("pos_b", True),
+    "Position gap (low → high)": ("pos_gap", True),
+    "Impressions (high → low)": ("total_impressions", False),
+}
+sort_choice = st.sidebar.selectbox("Sort by", list(SORT_OPTIONS.keys()), index=0)
+sort_col, sort_asc = SORT_OPTIONS[sort_choice]
+
 # ---- Apply filters ----------------------------------------------------------
 f = df[(df["pos_gap"] <= max_gap) & (df["total_impressions"] >= min_impr)]
 
@@ -65,7 +75,7 @@ if page_search.strip():
         | f["page_b"].str.contains(s, case=False, na=False)
     ]
 
-f = f.sort_values("total_impressions", ascending=False)
+f = f.sort_values(sort_col, ascending=sort_asc)
 
 # ---- Summary metrics --------------------------------------------------------
 c1, c2, c3 = st.columns(3)
