@@ -46,7 +46,10 @@ RANGE_FILES = {
 
 @st.cache_data
 def load_data(csv_file: str):
-    return pd.read_csv(csv_file)
+    df = pd.read_csv(csv_file)
+    if "total_clicks" not in df.columns:  # older snapshots
+        df["total_clicks"] = 0
+    return df
 
 
 def available_ranges():
@@ -211,6 +214,17 @@ min_impr = st.sidebar.slider(
     help="Hide low-volume conflicts.",
 )
 
+_max_clicks = int(df["total_clicks"].max())
+min_clicks = st.sidebar.slider(
+    "Min total clicks",
+    min_value=0,
+    max_value=max(_max_clicks, 1),  # slider needs max > min even when no clicks exist
+    value=0,
+    step=1,
+    help="Keep only conflicts whose query gets at least this many clicks."
+    + (" (No conflict in this window has any clicks.)" if _max_clicks == 0 else ""),
+)
+
 query_search = st.sidebar.text_input("Search query text", "")
 page_search = st.sidebar.text_input("Search page URL", "")
 
@@ -232,12 +246,17 @@ SORT_OPTIONS = {
     "Pos B (low → high)": ("pos_b", True),
     "Position gap (low → high)": ("pos_gap", True),
     "Impressions (high → low)": ("total_impressions", False),
+    "Clicks (high → low)": ("total_clicks", False),
 }
 sort_choice = st.sidebar.selectbox("Sort by", list(SORT_OPTIONS.keys()), index=0)
 sort_col, sort_asc = SORT_OPTIONS[sort_choice]
 
 # ---- Apply filters ----------------------------------------------------------
-f = df[(df["pos_gap"] <= max_gap) & (df["total_impressions"] >= min_impr)]
+f = df[
+    (df["pos_gap"] <= max_gap)
+    & (df["total_impressions"] >= min_impr)
+    & (df["total_clicks"] >= min_clicks)
+]
 
 if query_search.strip():
     f = f[f["query"].str.contains(query_search.strip(), case=False, na=False)]
@@ -329,10 +348,10 @@ row_limit = st.number_input(
 )
 view = f.head(int(row_limit))
 
-# column layout: query, impr, gap, page_a, posA, imprA, page_b, posB, imprB, action
-WIDTHS = [3, 1.1, 0.9, 3, 0.8, 1, 3, 0.8, 1, 1.2]
+# column layout: query, impr, clicks, gap, page_a, posA, imprA, page_b, posB, imprB, action
+WIDTHS = [3, 1, 1, 0.9, 3, 0.8, 1, 3, 0.8, 1, 1.2]
 HEADERS = [
-    "Query", "Impr", "Gap", "Page A", "Pos A", "Impr A",
+    "Query", "Impr", "Clicks", "Gap", "Page A", "Pos A", "Impr A",
     "Page B", "Pos B", "Impr B", "Action",
 ]
 
@@ -344,14 +363,15 @@ for idx, r in view.iterrows():
     cols = st.columns(WIDTHS)
     cols[0].write(r["query"])
     cols[1].write(f"{int(r['total_impressions']):,}")
-    cols[2].write(f"{r['pos_gap']:.1f}")
-    cols[3].write(r["page_a"])
-    cols[4].write(f"{r['pos_a']:.1f}")
-    cols[5].write(f"{int(r['impr_a']):,}")
-    cols[6].write(r["page_b"])
-    cols[7].write(f"{r['pos_b']:.1f}")
-    cols[8].write(f"{int(r['impr_b']):,}")
-    if cols[9].button("🔧 Fix", key=f"action_{idx}", help="Ask Claude what to optimize"):
+    cols[2].write(f"{int(r['total_clicks']):,}")
+    cols[3].write(f"{r['pos_gap']:.1f}")
+    cols[4].write(r["page_a"])
+    cols[5].write(f"{r['pos_a']:.1f}")
+    cols[6].write(f"{int(r['impr_a']):,}")
+    cols[7].write(r["page_b"])
+    cols[8].write(f"{r['pos_b']:.1f}")
+    cols[9].write(f"{int(r['impr_b']):,}")
+    if cols[10].button("🔧 Fix", key=f"action_{idx}", help="Ask Claude what to optimize"):
         st.session_state["action_row"] = r.to_dict()
         st.rerun()  # jump straight to the result panel at the top
 
