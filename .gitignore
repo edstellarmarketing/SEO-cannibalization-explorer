@@ -1,0 +1,11 @@
+# Never commit secrets
+*client_secret*.json
+*credentials*.json
+*service_account*.json
+.env
+.streamlit/secrets.toml
+
+__pycache__/
+*.pyc
+.venv/
+venv/
