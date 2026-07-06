@@ -7,6 +7,7 @@ Data: cannibalization_data.csv (generated from Google Search Console,
 window 2026-04-05 -> 2026-07-03).
 """
 
+import os
 import shutil
 import subprocess
 
@@ -14,10 +15,23 @@ import pandas as pd
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+load_dotenv()  # read CLAUDE_CODE_OAUTH_TOKEN (and anything else) from a local .env
 
 st.set_page_config(page_title="SEO Cannibalization Explorer", page_icon="🔎", layout="wide")
 
 BASE_URL = "https://www.edstellar.com"
+
+
+def claude_auth_status():
+    """Return (ok: bool, message: str) describing headless-CLI readiness."""
+    if not shutil.which("claude"):
+        return False, "`claude` CLI not found on this host — install Claude Code and run this app there."
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return True, "Authenticated via subscription token (CLAUDE_CODE_OAUTH_TOKEN)."
+    return True, ("No CLAUDE_CODE_OAUTH_TOKEN in .env — will use whatever login `claude` "
+                  "already has. Run `claude setup-token` and add it to .env for a stable subscription auth.")
 
 
 @st.cache_data
@@ -90,7 +104,11 @@ def get_optimization_advice(query, page_a, pos_a, page_b, pos_b) -> dict:
     prompt = build_prompt(query, page_a, pos_a, page_b, pos_b, ca, cb)
     try:
         res = subprocess.run(
-            [exe, "-p", prompt], capture_output=True, text=True, timeout=240
+            [exe, "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=240,
+            env=os.environ.copy(),  # carries CLAUDE_CODE_OAUTH_TOKEN from .env
         )
     except subprocess.TimeoutExpired:
         return {"error": "Claude timed out after 240s."}
@@ -107,6 +125,11 @@ st.caption(
     "conflicts where the two pages rank close together — a small position gap "
     "means they are genuinely fighting each other."
 )
+
+# ---- Claude auth status -----------------------------------------------------
+_ok, _msg = claude_auth_status()
+st.sidebar.header("Claude (headless CLI)")
+(st.sidebar.success if _ok else st.sidebar.error)(_msg)
 
 # ---- Sidebar controls -------------------------------------------------------
 st.sidebar.header("Filters")
